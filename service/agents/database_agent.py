@@ -4,7 +4,7 @@ from google.adk.models import Gemini
 from google.genai import types
 
 from service.db.database import add_transaction, get_all_transactions, add_goal, get_all_goals, add_investment, \
-    get_all_investments
+    get_all_investments, get_transaction_totals_by_date_range, get_transactions_by_type
 
 retry_config = types.HttpRetryOptions(
             attempts=5,  # Maximum retry attempts
@@ -61,6 +61,44 @@ def AddNewGoal(note: str, date_target: str, money_target: int) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"An error occurred: {e}"}
 
+
+def GetTransactionsByType(transaction_type: str) -> dict:
+    """
+    Retrieves all transactions of a specific type from the database.
+    Use this when a user asks for a list of only their income or only their expenses.
+    Args:
+        transaction_type: The type of transaction to retrieve. Must be either 'income' or 'expense'.
+    Returns:
+        A dictionary containing the list of transactions or an error message.
+    """
+    try:
+        transactions = get_transactions_by_type(transaction_type=transaction_type)
+        return {"status": "success", "data": transactions}
+    except Exception as e:
+        return {"status": "error", "message": f"An error occurred: {e}"}
+
+
+def GetTransactionTotalsByDateRange(start_date: str, end_date: str) -> dict:
+    """
+    Calculates the total income and total expense over a specified date range.
+    Use this when a user asks for a summary of their finances between two dates, like "how much did I spend last month?"
+    or "what was my total income and expense in January?".
+    Args:
+        start_date: The start date of the period in 'YYYY-MM-DD' format.
+        end_date: The end date of the period in 'YYYY-MM-DD' format.
+    Returns:
+        A dictionary containing the total income and expense, or an error message.
+    """
+    try:
+        # The LLM might pass dates in different formats, so we parse and reformat them.
+        start = datetime.strptime(start_date, '%Y-%m-%d').strftime('%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d').strftime('%Y-%m-%d')
+        totals = get_transaction_totals_by_date_range(start_date=start, end_date=end)
+        return {"status": "success", "data": totals}
+    except Exception as e:
+        return {"status": "error", "message": f"An error occurred: {e}"}
+
+
 def GetAllGoals() -> dict:
     """
     Retrieves all financial goals from the database.
@@ -115,15 +153,19 @@ database_agent = LlmAgent(
     instruction="""You are a database agent responsible for managing user's financial data.
 You can add and retrieve records from the database.
 
-Use the following tools based on the user's request:
-- To add a new transaction (income or expense), use the `AddNewTransaction` tool.
-- To get a list of all transactions, use the `GetAllTransactions` tool.
-- To add a new financial goal, use the `AddNewGoal` tool.
-- To get a list of all goals, use the `GetAllGoals` tool.
-- To add a new investment, use the `AddNewInvestment` tool.
-- To get a list of all investments, use the `GetAllInvestments` tool.
-""",
-    output_key="blog_outline",
-    tools=[AddNewTransaction, GetAllTransactions, AddNewGoal, GetAllGoals, AddNewInvestment, GetAllInvestments]
+ Use the following tools based on the user's request:
+ - To add a new transaction (income or expense), use the `AddNewTransaction` tool.
+ - To get a list of all transactions, use the `GetAllTransactions` tool.
+ - To get a list of only income or only expenses, use the `GetTransactionsByType` tool.
+ - To get a summary of total income and expenses for a specific period (e.g., last month, this year), use the `GetTransactionTotalsByDateRange` tool.
+ - To add a new financial goal, use the `AddNewGoal` tool.
+ - To get a list of all goals, use the `GetAllGoals` tool.
+ - To add a new investment, use the `AddNewInvestment` tool.
+ - To get a list of all investments, use the `GetAllInvestments` tool.
+ """,
+     tools=[
+         AddNewTransaction, GetAllTransactions, GetTransactionsByType, GetTransactionTotalsByDateRange,
+         AddNewGoal, GetAllGoals, AddNewInvestment, GetAllInvestments
+     ]
 )
 print("✅ Database Agent defined.")

@@ -4,6 +4,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from service.agents.database_agent import database_agent
+from service.agents.market_data_agent import market_data_agent
 from service.db.database import init_db, get_all_transactions, add_transaction
 import os
 import asyncio
@@ -87,8 +88,9 @@ async def main():
                         Your tool:
                         1: If user asks for adding anything to databse or getting list from saved data
                             use `database_agent` agent,
+                        2: If user asks for Market data,price,situation user `market_data_agent` agent    
                         """,
-            sub_agents=[database_agent],
+            sub_agents=[database_agent,market_data_agent],
         ) # ✅ ONLY put actual tools here, not agents
 
 
@@ -108,7 +110,7 @@ async def main():
                     break
 
                 response = await  runner.run_debug(prompt)
-                #print(f"Assistant: {response}")
+                # print(f"Assistant: {response}")
             except KeyboardInterrupt:
                 print("\nGoodbye!")
                 break
