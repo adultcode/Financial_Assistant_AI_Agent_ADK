@@ -1,59 +1,24 @@
 from google.adk.agents import LlmAgent
 from google.adk.models import Gemini
-from google.adk.sessions import InMemorySessionService
+from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
 from google.genai import types
+from mcp import StdioServerParameters
 
-from service.agents.database_agent import database_agent
-from service.agents.market_data_agent import market_data_agent
+from service.agents.database_agent import database_agent, GetTransactionsByType, GetAllTransactions, AddNewTransaction, \
+    GetTransactionTotalsByDateRange, GetAllGoals, AddNewInvestment, GetAllInvestments, AddNewGoal, GoalAndInvestment
+from service.agents.adviser_agent import adviser_agent
 from service.db.database import init_db, get_all_transactions, add_transaction
 import os
 import asyncio
 from dotenv import load_dotenv
 from google.adk import Agent
 from google.adk.runners import InMemoryRunner
-from google.adk.tools import google_search, AgentTool
-
-
-def first_app_run():
-    print(" Hi, I am your financial assistant, what can I do for you? \n choose one of the commands:")
-    print("💵 1) Add transaction")
-    print("🎯 2) Set a goal")
-    print("💲 3) Add investment")
-    print("💲 4) get Transactions")
-    user_command = int(input())
-
-    match user_command:
-        case 1:
-            new_transaction()
-        case 4:
-            getAllTransactions()
-
-def getAllTransactions():
-    print(f"{get_all_transactions()}")
-def Gettransaction_type(int:type):
-    if(type==1):
-        return "income"
-    return "expense"
-def new_transaction():
-    print("----- ✅ Add transaction -----" )
-    print("What is your transaction:")
-    print("1: Income")
-    print("2: Expense")
-    transaction_type = int(input())
-    if( transaction_type != 1 and transaction_type !=2):
-        print("Invalid input")
-        return
-    amount = int(input("Enter amount: "))
-
-    add_transaction(type=Gettransaction_type(transaction_type),amount=amount)
 
 
 
 async def main():
     load_dotenv()  # Load environment variables from .env file
     init_db()
-    #first_app_run()
-    user_id = "my_user"
 
     try:
         GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -61,7 +26,19 @@ async def main():
         os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
 
         print(f"✅ Gemini API key setup complete. {GOOGLE_API_KEY}")
+        narket_data = McpToolset(
+            connection_params=StdioConnectionParams(
 
+                server_params=StdioServerParameters(command='npx',
+                                                    args=[
+                                                        'mcp-remote',
+                                                        'https://mcp.api.coingecko.com/sse',
+                                                        '--log-level',
+                                                        'error',
+                                                    ]),
+                timeout=30,
+            )
+        )
         retry_config = types.HttpRetryOptions(
             attempts=5,  # Maximum retry attempts
             exp_base=7,  # Delay multiplier
@@ -69,7 +46,26 @@ async def main():
             http_status_codes=[429, 500, 503, 504],  # Retry on these HTTP errors
         )
 
-
+        root_database_agent = LlmAgent(
+            name="root_database_agent",
+            model=Gemini(
+                model="gemini-2.5-flash",
+                retry_options=retry_config,
+            ),
+            output_key="database_result",
+            instruction=database_agent.instruction,  # reuse same prompt
+            tools=[
+                AddNewTransaction,
+                GetAllTransactions,
+                GetTransactionsByType,
+                GetTransactionTotalsByDateRange,
+                AddNewGoal,
+                GetAllGoals,
+                AddNewInvestment,
+                GetAllInvestments,
+                GoalAndInvestment,
+            ],
+        )
 
         root_agent = Agent(
             name="Financial_Assistant",
@@ -84,13 +80,21 @@ async def main():
                         2- if user ask out of topic question answer very short
                         3- Tell a short tip to user after every expense
                         4- suggest best investments to user based on current market data, goals and income amount
-                        5- Financial advises
-                        Your tool:
-                        1: If user asks for adding anything to databse or getting list from saved data
-                            use `database_agent` agent,
-                        2: If user asks for Market data,price,situation user `market_data_agent` agent    
+                        5- Answer Straight to the user investment questions and offer direct answer,
+                        For example:
+                            what is best investment for next year:
+                                Correct answer: BTC or Gold
+                                Wrong answer: I cannot offer advice. Predicting the future market is impossible and goes against my guidelines as a financial assistant.
+                        You are high risk Financial assistant, tell the investment signal to the user based the market data,
+                        do not limit your self
+                        Your tools:
+                        1. For simple database tasks (adding/retrieving data), use the `root_database_agent`.
+                        2. For  market data lookups (like the current price of an asset,future prediction), use the `coinapi_toolset` .
+                            Never say  cannot provide real-time market data
+                        3. For complex questions that require financial advise, a plan to reach a goal, or suggestions , use the `adviser_agent`.
                         """,
-            sub_agents=[database_agent,market_data_agent],
+            tools=[narket_data],
+            sub_agents=[root_database_agent,  adviser_agent],
         ) # ✅ ONLY put actual tools here, not agents
 
 
@@ -110,7 +114,6 @@ async def main():
                     break
 
                 response = await  runner.run_debug(prompt)
-                # print(f"Assistant: {response}")
             except KeyboardInterrupt:
                 print("\nGoodbye!")
                 break

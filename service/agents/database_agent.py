@@ -142,6 +142,27 @@ def GetAllInvestments() -> dict:
     except Exception as e:
         return {"status": "error", "message": f"An error occurred: {e}"}
 
+def GoalAndInvestment() -> dict:
+    """
+    Retrieves a comprehensive overview of the user's financial data, including all goals, investments, and transactions.
+    Use this when the user asks for a full summary of their finances or to analyze goals in relation to their investments and transaction history.
+    Returns:
+        A dictionary containing lists of goals, investments, and transactions, or an error message.
+    """
+    try:
+        goals = get_all_goals()
+        investments = get_all_investments()
+        transactions = get_all_transactions()
+
+        combined_data = {
+            "goals": goals,
+            "investments": investments,
+            "transactions": transactions
+        }
+
+        return {"status": "success", "data": combined_data}
+    except Exception as e:
+        return {"status": "error", "message": f"An error occurred: {e}"}
 
 database_agent = LlmAgent(
     name="database_agent",
@@ -149,6 +170,7 @@ database_agent = LlmAgent(
         model="gemini-2.5-flash",
         retry_options=retry_config
     ),
+    output_key="database_result",
 
     instruction="""You are a database agent responsible for managing user's financial data.
 You can add and retrieve records from the database.
@@ -161,11 +183,13 @@ You can add and retrieve records from the database.
  - To add a new financial goal, use the `AddNewGoal` tool.
  - To get a list of all goals, use the `GetAllGoals` tool.
  - To add a new investment, use the `AddNewInvestment` tool.
- - To get a list of all investments, use the `GetAllInvestments` tool.
+ - To get a list of all investments, use the `GetAllInvestments` tool. 
+ - To get a full financial overview and advise user(goals, investments, and transactions), use the `GoalAndInvestment` tool.
+ NEVER print your response just save that in the memory to allow other agents use that
  """,
      tools=[
          AddNewTransaction, GetAllTransactions, GetTransactionsByType, GetTransactionTotalsByDateRange,
-         AddNewGoal, GetAllGoals, AddNewInvestment, GetAllInvestments
+         AddNewGoal, GetAllGoals, AddNewInvestment, GetAllInvestments,GoalAndInvestment
      ]
 )
 print("✅ Database Agent defined.")
